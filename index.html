@@ -747,6 +747,8 @@ function fmtClock12(mins){
 
 let mode = 'live'; // 'live' | 'sim'
 let simMinutes = 0;
+let liveActive = { A:false, B:false };
+let livePos = { A:null, B:null };
 
 function currentMinutesSinceOpen(){
   if(mode==='sim') return simMinutes;
@@ -806,20 +808,22 @@ function render(){
 
   const A = coordAtPos(posA);
   const B = coordAtPos(posB);
+  const dispA = liveActive.A ? livePos.A : A;
+  const dispB = liveActive.B ? livePos.B : B;
 
-  busAEl.style.opacity = showBuses ? 1 : 0.35;
-  busBEl.style.opacity = showBuses ? 1 : 0.35;
-  setBusTransform(busAEl, A.x, A.y);
-  setBusTransform(busBEl, B.x, B.y);
+  busAEl.style.opacity = (showBuses || liveActive.A) ? 1 : 0.35;
+  busBEl.style.opacity = (showBuses || liveActive.B) ? 1 : 0.35;
+  setBusTransform(busAEl, dispA.x, dispA.y);
+  setBusTransform(busBEl, dispB.x, dispB.y);
 
-  busABadge.g.style.opacity = showBuses ? 1 : 0.35;
-  busBBadge.g.style.opacity = showBuses ? 1 : 0.35;
-  busABadge.g.setAttribute('transform', `translate(${A.x},${A.y-30})`);
-  busBBadge.g.setAttribute('transform', `translate(${B.x},${B.y-30})`);
-  busABadge.t.textContent = String(A.activeStopId).padStart(2,'0');
-  busBBadge.t.textContent = String(B.activeStopId).padStart(2,'0');
+  busABadge.g.style.opacity = (showBuses || liveActive.A) ? 1 : 0.35;
+  busBBadge.g.style.opacity = (showBuses || liveActive.B) ? 1 : 0.35;
+  busABadge.g.setAttribute('transform', `translate(${dispA.x},${dispA.y-30})`);
+  busBBadge.g.setAttribute('transform', `translate(${dispB.x},${dispB.y-30})`);
+  busABadge.t.textContent = String(dispA.activeStopId).padStart(2,'0');
+  busBBadge.t.textContent = String(dispB.activeStopId).padStart(2,'0');
 
-  updateStopHighlight(A.activeStopId, B.activeStopId);
+  updateStopHighlight(dispA.activeStopId, dispB.activeStopId);
 
   document.getElementById('busAWhere').innerHTML = open
     ? `Currently at <b>Stop ${String(A.activeStopId).padStart(2,'0')} · ${stopName(A.activeStopId)}</b>`
@@ -908,7 +912,7 @@ async function pollLiveLocationFor(busId, ringEl, cardId, whereId, updatedId){
     if(!res.ok) return;
     const rows = await res.json();
     const card = document.getElementById(cardId);
-    if(!rows.length){ card.style.display='none'; ringEl.classList.remove('on'); return; }
+    if(!rows.length){ card.style.display='none'; ringEl.classList.remove('on'); liveActive[busId]=false; return; }
 
     const fix = rows[0];
     const ageMs = Date.now() - new Date(fix.created_at).getTime();
@@ -918,6 +922,7 @@ async function pollLiveLocationFor(busId, ringEl, cardId, whereId, updatedId){
     if(stale || calibratedIds.length===0){
       card.style.display='none';
       ringEl.classList.remove('on');
+      liveActive[busId]=false;
       return;
     }
 
@@ -935,6 +940,9 @@ async function pollLiveLocationFor(busId, ringEl, cardId, whereId, updatedId){
     ringEl.setAttribute('cx', stopMeta.x);
     ringEl.setAttribute('cy', stopMeta.y);
     ringEl.classList.add('on');
+
+    liveActive[busId] = true;
+    livePos[busId] = { x:stopMeta.x, y:stopMeta.y, activeStopId:bestId };
 
     const distTxt = bestDist<1000 ? `${Math.round(bestDist)} m` : `${(bestDist/1000).toFixed(1)} km`;
     document.getElementById(whereId).innerHTML =
