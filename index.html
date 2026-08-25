@@ -183,6 +183,13 @@
     pointer-events:none;
   }
   .stop-label.active{fill:var(--text-light);}
+  .leg-label{
+    font-family:'Inter',sans-serif;
+    font-size:11px;
+    fill:#7d7ab0;
+    text-anchor:middle;
+    pointer-events:none;
+  }
 
   .bus-badge circle{stroke-width:2; stroke:#171735;}
   .bus-badge.a circle{fill:var(--pink);}
@@ -502,7 +509,7 @@
 
   <div class="layout">
     <div class="stage">
-      <svg id="map" viewBox="0 0 1200 760" xmlns="http://www.w3.org/2000/svg"></svg>
+      <svg id="map" viewBox="0 0 1240 780" xmlns="http://www.w3.org/2000/svg"></svg>
     </div>
 
     <div class="cards">
@@ -587,23 +594,23 @@ for(let i=0;i<28;i++) bunting.appendChild(document.createElement('span'));
 
 /* ---------- Route data (from the official route card) ---------- */
 const stops = [
-  {id:1,  name:"Oceanus Mall",          full:"Oceanus Waterfront Mall",              x:290, y:95},
-  {id:2,  name:"Handicraft Market",     full:"Handicraft Market",                    x:420, y:95},
-  {id:3,  name:"Suria Sabah Mall",      full:"Suria Sabah Shopping Mall",            x:550, y:95},
-  {id:4,  name:"SICC",                  full:"Sabah International Convention Centre",x:680, y:95},
-  {id:5,  name:"Likas Bay",             full:"Likas Bay",                            x:810, y:95},
-  {id:6,  name:"Anjung Selera",         full:"Anjung Selera Food Centre",            x:935, y:95},
-  {id:7,  name:"Tun Mustapha Tower",    full:"Tun Mustapha Tower",                   x:1075, y:235},
-  {id:8,  name:"KK City Mosque",        full:"Kota Kinabalu City Mosque",            x:1075, y:375},
-  {id:9,  name:"Atkinson Clock Tower",  full:"Atkinson Clock Tower",                 x:1075, y:515, start:true},
-  {id:10, name:"Sabah Museum",          full:"Sabah State Museum",                   x:935, y:655},
-  {id:11, name:"Sabah Art Gallery",     full:"Sabah Art Gallery",                    x:810, y:655},
-  {id:12, name:"Chocolate Factory",     full:"Chocolate Factory",                    x:680, y:655},
-  {id:13, name:"Tanjung Aru Beach",     full:"Tanjung Aru Beach",                    x:550, y:655},
-  {id:14, name:"Shangri-La",            full:"Shangri-La Tanjung Aru",               x:420, y:655},
-  {id:15, name:"Pacific Sutera",        full:"The Pacific Sutera Hotel",             x:290, y:655},
-  {id:16, name:"Imago Mall",            full:"Imago Shopping Mall",                  x:150, y:515},
-  {id:17, name:"KK Sentral",            full:"KK Sentral",                           x:150, y:235, start:true},
+  {id:1,  name:"Oceanus Mall",          full:"Oceanus Waterfront Mall",              x:300, y:105},
+  {id:2,  name:"Handicraft Market",     full:"Handicraft Market",                    x:435, y:105},
+  {id:3,  name:"Suria Sabah Mall",      full:"Suria Sabah Shopping Mall",            x:570, y:105},
+  {id:4,  name:"SICC",                  full:"Sabah International Convention Centre",x:705, y:105},
+  {id:5,  name:"Likas Bay",             full:"Likas Bay",                            x:840, y:105},
+  {id:6,  name:"Anjung Selera",         full:"Anjung Selera Food Centre",            x:970, y:105},
+  {id:7,  name:"Tun Mustapha Tower",    full:"Tun Mustapha Tower",                   x:1115, y:245},
+  {id:8,  name:"KK City Mosque",        full:"Kota Kinabalu City Mosque",            x:1115, y:390},
+  {id:9,  name:"Atkinson Clock Tower",  full:"Atkinson Clock Tower",                 x:1115, y:535, start:true},
+  {id:10, name:"Sabah Museum",          full:"Sabah State Museum",                   x:970, y:675},
+  {id:11, name:"Sabah Art Gallery",     full:"Sabah Art Gallery",                    x:840, y:675},
+  {id:12, name:"Chocolate Factory",     full:"Chocolate Factory",                    x:705, y:675},
+  {id:13, name:"Tanjung Aru Beach",     full:"Tanjung Aru Beach",                    x:570, y:675},
+  {id:14, name:"Shangri-La",            full:"Shangri-La Tanjung Aru",               x:435, y:675},
+  {id:15, name:"Pacific Sutera",        full:"The Pacific Sutera Hotel",             x:300, y:675},
+  {id:16, name:"Imago Mall",            full:"Imago Shopping Mall",                  x:155, y:535},
+  {id:17, name:"KK Sentral",            full:"KK Sentral",                           x:155, y:245, start:true},
 ];
 
 const legMinutes = [2,5,5,15,5,3,10,15,10,5,10,8,3,12,8,3,3];
@@ -637,20 +644,26 @@ d += `Z`;
 svg.appendChild(el('path',{d, class:'route-line-glow'}));
 svg.appendChild(el('path',{d, class:'route-line'}));
 
+// Leg-duration labels ("x min") sit at each edge midpoint, nudged perpendicular
+// to the route segment so they never sit on top of a stop circle.
 for(let i=0;i<stops.length;i++){
   const a = stops[i], b = stops[(i+1)%stops.length];
   const mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
-  const t = el('text',{x:mx,y:my-10,class:'stop-label',style:'font-size:11px;fill:#7d7ab0'});
+  const dx = b.x-a.x, dy = b.y-a.y;
+  const len = Math.hypot(dx,dy) || 1;
+  // outward normal, pushed further out on short/steep legs
+  const nx = -dy/len, ny = dx/len;
+  const push = 22;
+  const t = el('text',{x:mx+nx*push, y:my+ny*push, class:'leg-label'});
   t.textContent = legMinutes[i]+" min";
   svg.appendChild(t);
 }
 
 const topRowIds = [1,2,3,4,5,6];
 const bottomRowIds = [10,11,12,13,14,15];
-function labelOffset(s, i){
-  if(topRowIds.includes(s.id)) return -32 - (i%2)*20;
-  if(bottomRowIds.includes(s.id)) return 40 + (i%2)*20;
-  return 0;
+function labelOffset(i){
+  // alternate tiers so adjacent labels along a row don't crowd each other
+  return (i%2===0) ? 36 : 54;
 }
 const stopEls = {};
 stops.forEach((s,i)=>{
@@ -661,16 +674,21 @@ stops.forEach((s,i)=>{
   g.appendChild(c); g.appendChild(n);
   svg.appendChild(g);
 
-  let lx = s.x, ly, anchorOverride=null;
-  if(topRowIds.includes(s.id) || bottomRowIds.includes(s.id)){
-    ly = s.y + labelOffset(s,i);
+  let lx = s.x, ly, anchor = 'middle';
+  if(topRowIds.includes(s.id)){
+    ly = s.y - labelOffset(i);
+  } else if(bottomRowIds.includes(s.id)){
+    ly = s.y + labelOffset(i);
   } else if(s.x > 900){
-    lx = s.x + 46; ly = s.y + 5; anchorOverride='start';
+    lx = s.x + 34; ly = s.y + 5; anchor = 'start';
   } else {
-    lx = s.x - 46; ly = s.y + 5; anchorOverride='end';
+    lx = s.x - 34; ly = s.y + 5; anchor = 'end';
   }
   const label = el('text',{x:lx, y:ly, class:'stop-label'});
-  if(anchorOverride) label.setAttribute('text-anchor', anchorOverride);
+  // Set alignment as an inline style, not a bare attribute: the .stop-label
+  // class rule (text-anchor:middle) otherwise wins over a plain attribute
+  // and every side-label re-centers on the circle, overlapping it.
+  label.style.textAnchor = anchor;
   label.textContent = s.name;
   svg.appendChild(label);
   stopEls[s.id] = {circle:c, num:n, label};
