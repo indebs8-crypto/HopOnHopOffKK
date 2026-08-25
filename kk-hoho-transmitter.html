@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KK Bus — Phone Transmitter</title>
+<style>
+  :root{
+    --bg:#171735; --panel:#20204a; --pink:#F0356B; --teal:#2ED9C3;
+    --gold:#FFC93C; --text:#F6F4FF; --muted:#A9A6CF;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,Segoe UI,Roboto,sans-serif;
+    padding:18px; min-height:100vh;
+  }
+  h1{font-size:20px; margin:0 0 4px;}
+  p.sub{color:var(--muted); font-size:13px; margin:0 0 18px;}
+  .card{
+    background:var(--panel); border-radius:16px; padding:16px;
+    margin-bottom:14px; border:1px solid rgba(255,255,255,0.08);
+  }
+  .row{display:flex; justify-content:space-between; padding:6px 0; font-size:14px;}
+  .row b{color:var(--gold); font-family:monospace; font-size:15px;}
+  button{
+    width:100%; padding:16px; border:none; border-radius:12px;
+    font-size:16px; font-weight:700; cursor:pointer; margin-top:8px;
+  }
+  .btn-start{background:var(--teal); color:#062622;}
+  .btn-stop{background:var(--pink); color:#3a0413;}
+  select{
+    width:100%; padding:12px; border-radius:10px; font-size:15px;
+    margin-top:8px; background:#12122a; color:var(--text); border:1px solid rgba(255,255,255,0.15);
+  }
+  .status{
+    font-size:13px; padding:8px 10px; border-radius:8px; margin-top:10px;
+  }
+  .status.ok{background:rgba(46,217,195,0.15); color:var(--teal);}
+  .status.warn{background:rgba(240,53,107,0.15); color:var(--pink);}
+  .status.idle{background:rgba(255,255,255,0.06); color:var(--muted);}
+  h2{font-size:15px; margin:0 0 6px;}
+</style>
+</head>
+<body>
+
+<h1>🚌 KK Bus — Phone Transmitter</h1>
+<p class="sub">Keep this tab open and the screen on while the bus is running.</p>
+
+<div class="card">
+  <h2>Current GPS reading</h2>
+  <div class="row"><span>Latitude</span><b id="lat">—</b></div>
+  <div class="row"><span>Longitude</span><b id="lon">—</b></div>
+  <div class="row"><span>Accuracy</span><b id="acc">—</b></div>
+  <div class="row"><span>Speed</span><b id="speed">—</b></div>
+  <div id="gpsStatus" class="status idle">Waiting for location permission…</div>
+</div>
+
+<div class="card">
+  <h2>Send live location</h2>
+  <button id="toggleBtn" class="btn-start">Start Sending</button>
+  <div id="sendStatus" class="status idle">Not sending</div>
+</div>
+
+<div class="card">
+  <h2>Calibrate a stop (one-time setup)</h2>
+  <p class="sub" style="margin:0 0 8px;">Stand at the actual stop, pick it below, then tap Save. Do this once for each of the 17 stops (any time — doesn't need to be today).</p>
+  <select id="stopSelect"></select>
+  <button id="calibrateBtn" class="btn-start" style="background:var(--gold); color:#231b02;">Save Current Location for This Stop</button>
+  <div id="calStatus" class="status idle">—</div>
+</div>
+
+<script>
+const SUPABASE_URL = "https://uwmkqmptsmyceqiexvxu.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV3bWtxbXB0c215Y2VxaWV4dnh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc1OTEyNzIsImV4cCI6MjEwMzE2NzI3Mn0.ESfmCFyA09sBYZ4e3ubtbkLWaqD17aZxyhV-wsO21GY";
+
+const STOPS = [
+  {id:1,  name:"01 · Oceanus Waterfront Mall"},
+  {id:2,  name:"02 · Handicraft Market"},
+  {id:3,  name:"03 · Suria Sabah Shopping Mall"},
+  {id:4,  name:"04 · SICC"},
+  {id:5,  name:"05 · Likas Bay"},
+  {id:6,  name:"06 · Anjung Selera Food Centre"},
+  {id:7,  name:"07 · Tun Mustapha Tower"},
+  {id:8,  name:"08 · Kota Kinabalu City Mosque"},
+  {id:9,  name:"09 · Atkinson Clock Tower"},
+  {id:10, name:"10 · Sabah State Museum"},
+  {id:11, name:"11 · Sabah Art Gallery"},
+  {id:12, name:"12 · Chocolate Factory"},
+  {id:13, name:"13 · Tanjung Aru Beach"},
+  {id:14, name:"14 · Shangri-La Tanjung Aru"},
+  {id:15, name:"15 · The Pacific Sutera Hotel"},
+  {id:16, name:"16 · Imago Shopping Mall"},
+  {id:17, name:"17 · KK Sentral"},
+];
+
+const stopSelect = document.getElementById('stopSelect');
+STOPS.forEach(s=>{
+  const o = document.createElement('option');
+  o.value = s.id; o.textContent = s.name;
+  stopSelect.appendChild(o);
+});
+
+let lastFix = null; // {lat, lon, acc, speed}
+let sending = false;
+let sendTimer = null;
+let wakeLock = null;
+
+const latEl = document.getElementById('lat');
+const lonEl = document.getElementById('lon');
+const accEl = document.getElementById('acc');
+const speedEl = document.getElementById('speed');
+const gpsStatus = document.getElementById('gpsStatus');
+const sendStatus = document.getElementById('sendStatus');
+const toggleBtn = document.getElementById('toggleBtn');
+const calStatus = document.getElementById('calStatus');
+
+function setGpsStatus(msg, cls){ gpsStatus.textContent = msg; gpsStatus.className = 'status '+cls; }
+function setSendStatus(msg, cls){ sendStatus.textContent = msg; sendStatus.className = 'status '+cls; }
+
+if(!('geolocation' in navigator)){
+  setGpsStatus('This browser has no GPS access.', 'warn');
+} else {
+  navigator.geolocation.watchPosition(
+    pos=>{
+      lastFix = {
+        lat: pos.coords.latitude,
+        lon: pos.coords.longitude,
+        acc: pos.coords.accuracy,
+        speed: pos.coords.speed
+      };
+      latEl.textContent = lastFix.lat.toFixed(6);
+      lonEl.textContent = lastFix.lon.toFixed(6);
+      accEl.textContent = Math.round(lastFix.acc)+' m';
+      speedEl.textContent = lastFix.speed ? (lastFix.speed*3.6).toFixed(1)+' km/h' : '0 km/h';
+      setGpsStatus('Location active', 'ok');
+    },
+    err=>{
+      setGpsStatus('GPS error: '+err.message, 'warn');
+    },
+    { enableHighAccuracy:true, maximumAge:5000, timeout:15000 }
+  );
+}
+
+async function sendFix(){
+  if(!lastFix) return;
+  try{
+    const res = await fetch(SUPABASE_URL+'/rest/v1/bus_location', {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization':'Bearer '+SUPABASE_ANON_KEY,
+        'Prefer':'return=minimal'
+      },
+      body: JSON.stringify({
+        lat: lastFix.lat,
+        lon: lastFix.lon,
+        speed: lastFix.speed ? lastFix.speed*3.6 : 0
+      })
+    });
+    if(res.ok){
+      setSendStatus('Last sent: '+new Date().toLocaleTimeString(), 'ok');
+    } else {
+      setSendStatus('Send failed ('+res.status+')', 'warn');
+    }
+  }catch(e){
+    setSendStatus('Send failed — check internet', 'warn');
+  }
+}
+
+async function requestWakeLock(){
+  try{
+    if('wakeLock' in navigator){
+      wakeLock = await navigator.wakeLock.request('screen');
+    }
+  }catch(e){ /* not supported, ignore */ }
+}
+
+toggleBtn.addEventListener('click', ()=>{
+  sending = !sending;
+  if(sending){
+    toggleBtn.textContent = 'Stop Sending';
+    toggleBtn.className = 'btn-stop';
+    setSendStatus('Starting…', 'idle');
+    requestWakeLock();
+    sendFix();
+    sendTimer = setInterval(sendFix, 10000); // every 10s
+  } else {
+    toggleBtn.textContent = 'Start Sending';
+    toggleBtn.className = 'btn-start';
+    setSendStatus('Stopped', 'idle');
+    clearInterval(sendTimer);
+    if(wakeLock){ wakeLock.release(); wakeLock=null; }
+  }
+});
+
+document.getElementById('calibrateBtn').addEventListener('click', async ()=>{
+  if(!lastFix){
+    calStatus.textContent = 'No GPS fix yet — wait a moment and try again.';
+    calStatus.className = 'status warn';
+    return;
+  }
+  const stopId = Number(stopSelect.value);
+  const stopName = STOPS.find(s=>s.id===stopId).name;
+  calStatus.textContent = 'Saving…';
+  calStatus.className = 'status idle';
+  try{
+    const res = await fetch(SUPABASE_URL+'/rest/v1/stop_locations?on_conflict=stop_id', {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization':'Bearer '+SUPABASE_ANON_KEY,
+        'Prefer':'resolution=merge-duplicates,return=minimal'
+      },
+      body: JSON.stringify({
+        stop_id: stopId,
+        stop_name: stopName,
+        lat: lastFix.lat,
+        lon: lastFix.lon,
+        updated_at: new Date().toISOString()
+      })
+    });
+    if(res.ok){
+      calStatus.textContent = 'Saved '+stopName+' ✓';
+      calStatus.className = 'status ok';
+    } else {
+      calStatus.textContent = 'Save failed ('+res.status+')';
+      calStatus.className = 'status warn';
+    }
+  }catch(e){
+    calStatus.textContent = 'Save failed — check internet';
+    calStatus.className = 'status warn';
+  }
+});
+
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='visible' && sending) requestWakeLock();
+});
+</script>
+</body>
+</html>
